@@ -4,9 +4,10 @@ A multi-user desktop app: each person enters their own Ranked World player URL o
 
 ## Build the Windows EXE with GitHub Actions (no local Python/build setup)
 
-1. Create a GitHub account if you do not already have one.
-2. Create a **new public or private repository** on GitHub.
-3. Upload the contents of this folder to the repository. Make sure `.github/workflows/build-windows.yml` is included. (When uploading through the website, GitHub may hide dot-folders; if so, upload using GitHub Desktop or `git` so the `.github` folder is preserved.)
+[Open the EXE build page on GitHub](https://github.com/LLOIP/GorillaTagRanked_Reader/actions/workflows/build-windows.yml).
+
+1. Open [Upload files to GorillaTagRanked_Reader](https://github.com/LLOIP/GorillaTagRanked_Reader/upload/main).
+2. Upload the contents of the `GTC_Rank_Presence` folder to that page and commit the changes. Make sure the `.github/workflows/build-windows.yml` workflow is included. If GitHub's web uploader does not let you add the `.github` folder, upload that folder using GitHub Desktop or `git` instead.
 4. Open the repository's **Actions** tab and enable Actions if GitHub asks.
 5. Select **Build Windows EXE** in the left sidebar.
 6. Click **Run workflow** → **Run workflow**.
