@@ -408,8 +408,8 @@ class GTCApp:
             profile = normalize_profile_url(self.profile_var.get())
             if self.rpc_started_at is None:
                 self.rpc_started_at = int(time.time())
-            self.rpc.update(details="Playing: Gorilla Tag COMP",
-                            state=f"{self.current['rank']} • {self.current['bracket']}",
+            self.rpc.update(details=f"Active Rank: {self.current['rank']}",
+                            state=f"GTC COMP • {self.current['bracket']}",
                             start=self.rpc_started_at,
                             large_image=key, large_text=f"{self.current['rank']} • GTC",
                             buttons=[{"label": "View Ranked World profile", "url": profile}])

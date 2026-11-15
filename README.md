@@ -39,3 +39,11 @@ in the Discord Developer Portal; the app cannot create Discord applications on a
 The app now resolves bundled assets from the PyInstaller extraction folder, the app folder,
 or the legacy `gtc_logo.png` name. The GitHub Actions build also checks that the required
 logo and rank images exist before packaging and includes both logo filenames.
+
+
+### Active rank in Discord
+
+Rich Presence now puts the player's current rank directly in the activity details
+(`Active Rank: Ruby 2`, for example) and shows the GTC COMP bracket in the state.
+The Discord application's own title is controlled by Discord Developer Portal and is
+not dynamically editable by Rich Presence.
