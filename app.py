@@ -4,6 +4,7 @@ from pathlib import Path
 from urllib.parse import urlparse
 from tkinter import Tk, StringVar, BooleanVar, Label, Button, Entry, Checkbutton, Frame, messagebox
 from tkinter import ttk
+import pystray
 import requests
 from bs4 import BeautifulSoup
 from PIL import Image, ImageTk
@@ -14,6 +15,7 @@ except Exception:
     Presence = None
 
 APP_NAME = "GTC Rank Presence"
+DISCORD_SERVER_URL = "https://discord.com/servers/1076000755867205713"
 DEFAULT_PROFILE = "https://rankedworld.com/player/1113996311981740153"
 POLL_SECONDS = 90
 RANKS = {
@@ -121,8 +123,12 @@ class GTCApp:
     def __init__(self, root):
         self.root = root
         self.root.title(APP_NAME)
-        self.root.geometry("740x650")
-        self.root.minsize(660, 610)
+        try:
+            self.root.iconbitmap(str(resource_path("gtc_app.ico")))
+        except Exception:
+            pass
+        self.root.geometry("740x690")
+        self.root.minsize(660, 650)
         self.root.configure(bg="#10131b")
         self.config = load_config()
         self.current = None
@@ -130,6 +136,10 @@ class GTCApp:
         self.rpc_connected = False
         self.fetching = False
         self.icon_photo = None
+        self.rpc_started_at = None
+        self.tray_icon = None
+        self.tray_thread = None
+        self.allow_full_quit = False
         self.profile_var = StringVar(value=self.config.get("profile_url", DEFAULT_PROFILE))
         self.client_id_var = StringVar(value=self.config.get("discord_client_id", ""))
         self.presence_var = BooleanVar(value=self.config.get("presence_enabled", False))
@@ -169,13 +179,20 @@ class GTCApp:
 
         discord = self.panel(self.root); discord.pack(fill="x", padx=24, pady=7)
         Label(discord, text="DISCORD RICH PRESENCE", bg="#171c29", fg="#f4f7ff", font=("Segoe UI", 10, "bold")).pack(anchor="w", padx=15, pady=(12, 7))
+        Label(discord, text="Activity title is fixed by the Discord application; rank is shown in the activity state.", bg="#171c29", fg="#8e9bb0", font=("Segoe UI", 8), wraplength=640).pack(anchor="w", padx=15, pady=(0, 5))
         line = Frame(discord, bg="#171c29"); line.pack(fill="x", padx=15)
         Label(line, text="Application ID", bg="#171c29", fg="#aeb8ca", font=("Segoe UI", 9)).pack(side="left")
         Entry(line, textvariable=self.client_id_var, bg="#0f1420", fg="#f4f7ff", insertbackground="white", relief="flat").pack(side="left", fill="x", expand=True, padx=(12, 0), ipady=7)
         Checkbutton(discord, text="Enable Discord Rich Presence", variable=self.presence_var, command=self.toggle_presence, bg="#171c29", fg="#e8edf8", selectcolor="#0f1420", activebackground="#171c29", activeforeground="white").pack(anchor="w", padx=12, pady=(8, 2))
         Checkbutton(discord, text="Start this app when Windows starts", variable=self.startup_var, command=self.toggle_startup, bg="#171c29", fg="#e8edf8", selectcolor="#0f1420", activebackground="#171c29", activeforeground="white").pack(anchor="w", padx=12, pady=(0, 11))
 
-        Button(self.root, text="Save settings / connect Discord", command=self.save_settings, bg="#29364d", fg="white", activebackground="#354662", relief="flat", padx=15, pady=9).pack(anchor="w", padx=24, pady=(7, 4))
+        actions = Frame(self.root, bg="#10131b")
+        actions.pack(fill="x", padx=24, pady=(7, 4))
+        Button(actions, text="Save settings / connect Discord", command=self.save_settings, bg="#29364d", fg="white", activebackground="#354662", relief="flat", padx=15, pady=9).pack(side="left")
+        Button(actions, text="🦍  GTC Discord", command=lambda: webbrowser.open(DISCORD_SERVER_URL), bg="#5865F2", fg="white", activebackground="#4752c4", relief="flat", padx=14, pady=9).pack(side="left", padx=(8, 0))
+        self.quit_leaf_photo = ImageTk.PhotoImage(Image.open(resource_path("gtc_app.png")).convert("RGBA").resize((20, 20), Image.Resampling.LANCZOS))
+        Button(actions, text="Full Quit", image=self.quit_leaf_photo, compound="left", command=self.full_quit, bg="#7c3442", fg="white", activebackground="#9a4051", relief="flat", padx=14, pady=9).pack(side="right")
+        Label(self.root, text="( with love, pinko <3 )", bg="#10131b", fg="#8490a6", font=("Segoe UI", 9, "italic")).pack(anchor="w", padx=26, pady=(4, 0))
         Label(self.root, textvariable=self.status_var, bg="#10131b", fg="#8f9bb0", font=("Segoe UI", 9), anchor="w", wraplength=680).pack(fill="x", padx=26, pady=(8, 4))
         Label(self.root, text=f"Auto-refresh: every {POLL_SECONDS} seconds • Rank source: Ranked World", bg="#10131b", fg="#59667c", font=("Segoe UI", 8)).pack(anchor="w", padx=26, pady=(0, 12))
 
@@ -270,7 +287,11 @@ class GTCApp:
                 self.rpc = Presence(client_id); self.rpc.connect(); self.rpc_connected = True
             key = self.config.get("asset_keys", {}).get(self.current["rank_key"], self.current["rank_key"])
             profile = normalize_profile_url(self.profile_var.get())
-            self.rpc.update(details="Playing: GTC", state=f"{self.current['rank']} • {self.current['bracket']}",
+            if self.rpc_started_at is None:
+                self.rpc_started_at = int(time.time())
+            self.rpc.update(details="Playing: Gorilla Tag COMP",
+                            state=f"{self.current['rank']} • {self.current['bracket']}",
+                            start=self.rpc_started_at,
                             large_image=key, large_text=f"{self.current['rank']} • GTC",
                             buttons=[{"label": "View Ranked World profile", "url": profile}])
             self.status_var.set("Discord Rich Presence active • rank updates automatically.")
@@ -282,17 +303,47 @@ class GTCApp:
             try: self.rpc.clear(); self.rpc.close()
             except Exception: pass
         self.rpc = None; self.rpc_connected = False
+        self.rpc_started_at = None
+
+    def hide_to_tray(self):
+        self.root.withdraw()
+        if self.tray_icon is None:
+            try:
+                tray_image = Image.open(resource_path("gtc_app.png")).convert("RGBA")
+                self.tray_icon = pystray.Icon(
+                    "GTC Rank Presence", tray_image, "GTC Rank Presence",
+                    menu=pystray.Menu(
+                        pystray.MenuItem("Open GTC Rank Presence", lambda icon, item: self.root.after(0, self.restore_window), default=True),
+                        pystray.MenuItem("Full Quit", lambda icon, item: self.root.after(0, self.full_quit))
+                    )
+                )
+                self.tray_thread = threading.Thread(target=self.tray_icon.run, daemon=True)
+                self.tray_thread.start()
+            except Exception as exc:
+                self.root.deiconify()
+                self.status_var.set("Could not create tray icon: " + str(exc)[:120])
+
+    def restore_window(self):
+        self.root.deiconify()
+        self.root.lift()
+        self.root.focus_force()
 
     def close(self):
-        self.disconnect_rpc(); self.root.destroy()
+        # Closing the window hides it; Discord Rich Presence keeps running.
+        self.hide_to_tray()
+
+    def full_quit(self):
+        self.allow_full_quit = True
+        self.disconnect_rpc()
+        if self.tray_icon is not None:
+            try:
+                self.tray_icon.stop()
+            except Exception:
+                pass
+            self.tray_icon = None
+        self.root.destroy()
 
 def main():
-    root = Tk()
-    try:
-        root.iconbitmap(str(resource_path("gtc_app.ico")))
-    except Exception:
-        pass
-    GTCApp(root)
-    root.mainloop()
+    root = Tk(); GTCApp(root); root.mainloop()
 
 if __name__ == "__main__": main()
