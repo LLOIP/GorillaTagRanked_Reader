@@ -32,3 +32,10 @@ SteamVR launch link (`steam://rungameid/250820`), which asks Steam to start Stea
 Discord Rich Presence connects automatically on launch when it is enabled in saved settings
 and a Discord Application ID has been configured. A Discord application must be created once
 in the Discord Developer Portal; the app cannot create Discord applications on a user's behalf.
+
+
+### Fixed missing logo asset in packaged EXE
+
+The app now resolves bundled assets from the PyInstaller extraction folder, the app folder,
+or the legacy `gtc_logo.png` name. The GitHub Actions build also checks that the required
+logo and rank images exist before packaging and includes both logo filenames.

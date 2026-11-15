@@ -34,8 +34,32 @@ DEFAULTS = {"profile_url": DEFAULT_PROFILE, "discord_client_id": "", "presence_e
             "asset_keys": {k: k for k in RANKS}}
 
 def resource_path(name):
-    root = Path(getattr(sys, "_MEIPASS", Path(__file__).resolve().parent))
-    return root / name
+    """Resolve bundled assets in PyInstaller builds and normal Python runs."""
+    candidates = []
+    bundle_root = getattr(sys, "_MEIPASS", None)
+    if bundle_root:
+        candidates.append(Path(bundle_root) / name)
+    app_root = Path(__file__).resolve().parent
+    candidates.extend([
+        app_root / name,
+        Path(sys.executable).resolve().parent / name,
+    ])
+
+    # Compatibility fallback for packages that used the earlier logo filename.
+    if name == "gtc_app.png":
+        if bundle_root:
+            candidates.append(Path(bundle_root) / "gtc_logo.png")
+        candidates.extend([
+            app_root / "gtc_logo.png",
+            Path(sys.executable).resolve().parent / "gtc_logo.png",
+        ])
+
+    for candidate in candidates:
+        if candidate.is_file():
+            return candidate
+
+    # Return the expected bundled path so the caller can report a useful error.
+    return candidates[0] if candidates else Path(name)
 
 def config_path():
     if os.name == "nt" and os.environ.get("APPDATA"):
