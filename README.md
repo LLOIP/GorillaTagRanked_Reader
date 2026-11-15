@@ -1,55 +1,55 @@
 # GTC Rank Presence
 
-Windows desktop app that displays the active **Ranked** division from the supplied Ranked World player profile and can publish Discord Rich Presence.
+A multi-user desktop app: each person enters their own Ranked World player URL or numeric player ID. The app saves that profile locally, reads its **Ranked** section (not Scrims), updates the badge and Discord Rich Presence, and checks again every 90 seconds.
 
-## Install and run
-1. Install Python 3.10 or newer from https://www.python.org/downloads/ (enable **Add Python to PATH**).
-2. Extract this folder somewhere permanent, such as `Documents\GTC Rank Presence`.
-3. Open Command Prompt in this folder and run:
-   ```
-   py -m pip install -r requirements.txt
-   py app.py
-   ```
+## Easiest way for Windows users (no Python needed)
+A Windows `.exe` can be built from this project using `build_windows.bat` on a Windows PC:
+1. Install Python 3.10+ and enable **Add Python to PATH**.
+2. Extract this folder.
+3. Double-click `build_windows.bat` and wait for it to finish.
+4. Share the entire `dist\GTC Rank Presence` folder. Users run `GTC Rank Presence.exe` inside it. Keep the folder together because it contains the badge assets.
 
-## Discord Rich Presence setup
-Rich Presence is published to the Discord account currently signed in to the **Discord desktop app** on this PC. This app does not ask for your Discord password and does not sign in to or switch Discord accounts.
+This build script must be run on Windows to create the Windows executable. The source app can also run on other desktop systems that have Python and Tk support installed:
 
-1. Open the Discord Developer Portal: https://discord.com/developers/applications
-2. Create a New Application (name it `GTC` or another name you prefer).
-3. Copy its **Application ID**.
-4. Open **Rich Presence → Art Assets** for that application.
-5. Upload the six supplied PNG icons there. Use these exact asset keys (lowercase):
-   - `bronze`
-   - `silver`
-   - `gold`
-   - `platinum`
-   - `ruby`
-   - `sapphire`
-6. Keep the Discord desktop app open and signed in.
-7. In GTC Rank Presence, paste the Application ID, tick **Enable Discord Rich Presence**, then click **Save / Connect**.
+```bash
+python -m pip install -r requirements.txt
+python app.py
+```
 
-Discord presence text:
+## Add your own Ranked World profile
+1. Copy your profile link, such as `https://rankedworld.com/player/123456789`.
+2. Paste it into **Your Ranked World Profile**. You can also enter only the numeric player ID.
+3. Click **Save profile & refresh**.
+4. Your rank icon, division, bracket and Discord activity will refresh automatically every 90 seconds. Your profile link is saved on your own computer.
+
+## Discord Rich Presence
+Rich Presence appears on the Discord account currently signed in to the Discord desktop app on that computer. The app never asks for Discord passwords or tokens.
+
+For a shared public release, the app publisher should create one Discord Developer Application, upload the six rank PNGs in **Rich Presence → Art Assets**, and distribute that same Application ID to users. The required image keys are `bronze`, `silver`, `gold`, `platinum`, `ruby`, and `sapphire`. If users build their own copy, they can create their own Discord application and upload the assets themselves.
+
+Enter the Application ID, keep Discord desktop running, enable Rich Presence, and click **Save settings / connect Discord**.
+
+Presence fields:
 - Details: `Playing: GTC`
-- State: current division and bracket, e.g. `Ruby 2 • TOP`
-- The presence button opens the Ranked World profile.
-
-Note: Discord RPC images must be uploaded as Rich Presence assets to your Discord application. The local PNG files are used in this desktop app; Discord cannot display a local disk image directly.
+- State: current division and bracket (for example `Ruby 2 • TOP`)
+- Large image: current rank badge
+- Button: opens the profile currently entered in the app
 
 ## Windows startup
-Tick **Start this app when Windows starts**. The app creates a small `.bat` shortcut in your Windows Startup folder. Untick it to remove the shortcut. Keep the extracted app folder in the same place.
+Tick **Start this app when Windows starts**. It creates a shortcut script in the current Windows user's Startup folder. Untick it to remove it. Keep the app folder in the same location after enabling startup.
 
-## Rank brackets
-The app reads the **Ranked** section (not the separate Scrims section). It uses the bracket shown on the profile when available. Fallback bracket mapping follows:
-- Bronze and Silver 1: LOW
-- Silver 2 and Silver 3: MID
-- Gold 1: MID
-- Gold 2 and Platinum: HIGH
-- Ruby and Sapphire: TOP
+## Bracket behavior
+The app uses the bracket shown in the profile's Ranked section. Fallback mapping, if the site omits a bracket, is: Bronze/Silver 1 = LOW; Silver 2+ and Gold 1 = MID; Gold 2/Platinum = HIGH; Ruby/Sapphire = TOP.
 
-The source page may change its layout or restrict automated requests. If that happens, the app will show a refresh error rather than invent a rank. Refresh interval is 90 seconds.
+The app reads the public profile page. If Ranked World changes its page structure, blocks requests, or the profile is private/unavailable, the app reports a refresh error instead of guessing a rank.
 
-## Files
-- `app.py` — complete Python application
-- `requirements.txt` — Python packages
-- `config.json` — created automatically for local settings
-- `*.png` — your supplied rank icons
+## Included files
+- `app.py` — desktop application
+- `build_windows.bat` — builds a Windows app folder containing the executable
+- `requirements.txt` — Python dependencies and PyInstaller
+- `bronze.png`, `silver.png`, `gold.png`, `platinum.png`, `ruby.png`, `sapphire.png` — supplied rank badges
+
+
+## GTC Ranked League logo
+The supplied-reference-inspired logo is included as `gtc_logo.png`.
+The Windows icon file is `gtc_app.ico`; the build script applies it to the executable.
