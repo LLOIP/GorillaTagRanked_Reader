@@ -287,6 +287,12 @@ class GTCApp:
         self.disconnect_rpc(); self.root.destroy()
 
 def main():
-    root = Tk(); GTCApp(root); root.mainloop()
+    root = Tk()
+    try:
+        root.iconbitmap(str(resource_path("gtc_app.ico")))
+    except Exception:
+        pass
+    GTCApp(root)
+    root.mainloop()
 
 if __name__ == "__main__": main()
