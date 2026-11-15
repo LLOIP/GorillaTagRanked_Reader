@@ -1,10 +1,16 @@
 """GTC Rank Presence - multi-profile Ranked World tracker with Discord RPC."""
-import os, re, sys, json, time, threading, webbrowser
+import os, re, sys, json, time, threading, webbrowser, subprocess
 from pathlib import Path
 from urllib.parse import urlparse
 from tkinter import Tk, StringVar, BooleanVar, Label, Button, Entry, Checkbutton, Frame, messagebox
 from tkinter import ttk
 import pystray
+import psutil
+try:
+    from winotify import Notification, audio
+except Exception:
+    Notification = None
+    audio = None
 import requests
 from bs4 import BeautifulSoup
 from PIL import Image, ImageTk
@@ -24,7 +30,7 @@ RANKS = {
     "ruby": ("Ruby", "ruby.png"), "sapphire": ("Sapphire", "sapphire.png")
 }
 DEFAULTS = {"profile_url": DEFAULT_PROFILE, "discord_client_id": "", "presence_enabled": False,
-            "startup_enabled": False, "poll_seconds": POLL_SECONDS,
+            "startup_enabled": False, "steamvr_monitor_enabled": True, "poll_seconds": POLL_SECONDS,
             "asset_keys": {k: k for k in RANKS}}
 
 def resource_path(name):
@@ -119,6 +125,51 @@ def set_startup(enabled):
     else:
         target.unlink(missing_ok=True)
 
+
+STEAMVR_APP_ID = "250820"
+STEAMVR_URI = f"steam://rungameid/{STEAMVR_APP_ID}"
+
+def steamvr_running():
+    """Return True when SteamVR's main server process is present."""
+    try:
+        for proc in psutil.process_iter(["name"]):
+            name = (proc.info.get("name") or "").lower()
+            if name == "vrserver.exe":
+                return True
+    except Exception:
+        pass
+    return False
+
+def show_toast(title, message, button_label=None, button_uri=None):
+    """Show a Windows toast. Toast action opens Steam's SteamVR app URI."""
+    if Notification is None:
+        return False
+    try:
+        toast = Notification(
+            app_id="GTC Rank Presence",
+            title=title,
+            msg=message,
+            duration="long"
+        )
+        if button_label and button_uri:
+            toast.add_actions(label=button_label, launch=button_uri)
+        if audio is not None:
+            toast.set_audio(audio.Default, loop=False)
+        toast.show()
+        return True
+    except Exception:
+        return False
+
+def rank_progress_score(result):
+    order = ["bronze", "silver", "gold", "platinum", "ruby", "sapphire"]
+    tier = order.index(result["rank_key"])
+    try:
+        division = int(result.get("division", 1))
+    except Exception:
+        division = 1
+    # A lower division number is treated as a higher division within a tier.
+    return tier * 100 - division
+
 class GTCApp:
     def __init__(self, root):
         self.root = root
@@ -140,6 +191,10 @@ class GTCApp:
         self.tray_icon = None
         self.tray_thread = None
         self.allow_full_quit = False
+        self.previous_rank = None
+        self.steamvr_was_running = None
+        self.steamvr_monitor_after_id = None
+        self.steamvr_monitor_var = BooleanVar(value=self.config.get("steamvr_monitor_enabled", True))
         self.profile_var = StringVar(value=self.config.get("profile_url", DEFAULT_PROFILE))
         self.client_id_var = StringVar(value=self.config.get("discord_client_id", ""))
         self.presence_var = BooleanVar(value=self.config.get("presence_enabled", False))
@@ -151,6 +206,7 @@ class GTCApp:
         self._build()
         self.root.protocol("WM_DELETE_WINDOW", self.close)
         self.root.after(500, self.refresh)
+        self.root.after(1500, self.monitor_steamvr)
 
     def panel(self, parent):
         return Frame(parent, bg="#171c29", highlightbackground="#2a3448", highlightthickness=1)
@@ -185,6 +241,7 @@ class GTCApp:
         Entry(line, textvariable=self.client_id_var, bg="#0f1420", fg="#f4f7ff", insertbackground="white", relief="flat").pack(side="left", fill="x", expand=True, padx=(12, 0), ipady=7)
         Checkbutton(discord, text="Enable Discord Rich Presence", variable=self.presence_var, command=self.toggle_presence, bg="#171c29", fg="#e8edf8", selectcolor="#0f1420", activebackground="#171c29", activeforeground="white").pack(anchor="w", padx=12, pady=(8, 2))
         Checkbutton(discord, text="Start this app when Windows starts", variable=self.startup_var, command=self.toggle_startup, bg="#171c29", fg="#e8edf8", selectcolor="#0f1420", activebackground="#171c29", activeforeground="white").pack(anchor="w", padx=12, pady=(0, 11))
+        Checkbutton(discord, text="Monitor SteamVR (rank-up + close notifications)", variable=self.steamvr_monitor_var, command=self.toggle_steamvr_monitor, bg="#171c29", fg="#e8edf8", selectcolor="#0f1420", activebackground="#171c29", activeforeground="white").pack(anchor="w", padx=12, pady=(0, 11))
 
         actions = Frame(self.root, bg="#10131b")
         actions.pack(fill="x", padx=24, pady=(7, 4))
@@ -194,7 +251,7 @@ class GTCApp:
         Button(actions, text="Full Quit", image=self.quit_leaf_photo, compound="left", command=self.full_quit, bg="#7c3442", fg="white", activebackground="#9a4051", relief="flat", padx=14, pady=9).pack(side="right")
         Label(self.root, text="( with love, pinko <3 )", bg="#10131b", fg="#8490a6", font=("Segoe UI", 9, "italic")).pack(anchor="w", padx=26, pady=(4, 0))
         Label(self.root, textvariable=self.status_var, bg="#10131b", fg="#8f9bb0", font=("Segoe UI", 9), anchor="w", wraplength=680).pack(fill="x", padx=26, pady=(8, 4))
-        Label(self.root, text=f"Auto-refresh: every {POLL_SECONDS} seconds • Rank source: Ranked World", bg="#10131b", fg="#59667c", font=("Segoe UI", 8)).pack(anchor="w", padx=26, pady=(0, 12))
+        Label(self.root, text=f"Auto-refresh: every {POLL_SECONDS} seconds • SteamVR monitoring • Ranked World", bg="#10131b", fg="#59667c", font=("Segoe UI", 8)).pack(anchor="w", padx=26, pady=(0, 12))
 
     def save_profile(self):
         try:
@@ -209,6 +266,7 @@ class GTCApp:
         self.config["discord_client_id"] = self.client_id_var.get().strip()
         self.config["presence_enabled"] = self.presence_var.get()
         self.config["startup_enabled"] = self.startup_var.get()
+        self.config["steamvr_monitor_enabled"] = self.steamvr_monitor_var.get()
         try:
             self.config["profile_url"] = normalize_profile_url(self.profile_var.get())
             self.profile_var.set(self.config["profile_url"])
@@ -231,6 +289,34 @@ class GTCApp:
             self.status_var.set("Windows startup setting updated.")
         except Exception as exc:
             self.startup_var.set(False); self.status_var.set(str(exc)); messagebox.showerror("Startup", str(exc))
+
+    def toggle_steamvr_monitor(self):
+        enabled = self.steamvr_monitor_var.get()
+        self.config["steamvr_monitor_enabled"] = enabled
+        save_config(self.config)
+        if enabled:
+            self.steamvr_was_running = steamvr_running()
+            self.status_var.set("SteamVR monitoring enabled.")
+        else:
+            self.status_var.set("SteamVR monitoring disabled.")
+
+    def monitor_steamvr(self):
+        if self.steamvr_monitor_var.get():
+            running = steamvr_running()
+            if self.steamvr_was_running is None:
+                # Establish a baseline so launching the app while SteamVR is closed
+                # does not produce a false alarm.
+                self.steamvr_was_running = running
+            elif self.steamvr_was_running and not running:
+                show_toast(
+                    "SteamVR Has Closed!",
+                    "Was this an accident? Press below to reopen Steam and SteamVR.",
+                    "Reopen SteamVR",
+                    STEAMVR_URI
+                )
+                self.status_var.set("SteamVR closed • notification sent.")
+            self.steamvr_was_running = running
+        self.steamvr_monitor_after_id = self.root.after(2500, self.monitor_steamvr)
 
     def open_profile(self):
         try: webbrowser.open(normalize_profile_url(self.profile_var.get()))
@@ -259,7 +345,15 @@ class GTCApp:
         self.schedule_refresh()
 
     def rank_received(self, result, url):
-        self.fetching = False; self.current = result
+        self.fetching = False
+        old_rank = self.previous_rank
+        self.current = result
+        if old_rank is not None and rank_progress_score(result) > rank_progress_score(old_rank):
+            show_toast(
+                "GTC Rank Up!",
+                f"Your Ranked World rank increased to {result['rank']} • {result['bracket']}."
+            )
+        self.previous_rank = result
         self.rank_var.set(result["rank"]); self.bracket_var.set("STARTS: " + result["bracket"])
         self.player_var.set(url)
         try:
@@ -269,7 +363,8 @@ class GTCApp:
         except Exception:
             self.badge_label.configure(image="", text=result["rank_key"].upper())
         self.status_var.set(f"Updated {time.strftime('%I:%M:%S %p')} • {result['rank']} / {result['bracket']}")
-        if self.presence_var.get(): self.update_presence()
+        if self.presence_var.get():
+            self.update_presence()
         self.schedule_refresh()
 
     def schedule_refresh(self):
@@ -334,6 +429,11 @@ class GTCApp:
 
     def full_quit(self):
         self.allow_full_quit = True
+        if self.steamvr_monitor_after_id is not None:
+            try:
+                self.root.after_cancel(self.steamvr_monitor_after_id)
+            except Exception:
+                pass
         self.disconnect_rpc()
         if self.tray_icon is not None:
             try:

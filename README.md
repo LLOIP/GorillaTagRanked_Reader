@@ -19,3 +19,16 @@ The Discord activity's application title (the small title above its details) is 
 ## Discord server
 The shortcut opens the GTC | VR Esports Discord server listing:
 https://discord.com/servers/1076000755867205713
+
+
+## SteamVR monitoring and notifications
+
+Enable **Monitor SteamVR** in the app to receive Windows desktop notifications when:
+- Ranked World rank progresses upward after a refresh.
+- SteamVR closes after it was detected running.
+
+The SteamVR notification includes a **Reopen SteamVR** action. Selecting it opens Steam's
+SteamVR launch link (`steam://rungameid/250820`), which asks Steam to start SteamVR.
+Discord Rich Presence connects automatically on launch when it is enabled in saved settings
+and a Discord Application ID has been configured. A Discord application must be created once
+in the Discord Developer Portal; the app cannot create Discord applications on a user's behalf.
